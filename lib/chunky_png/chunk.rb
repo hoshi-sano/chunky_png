@@ -377,6 +377,90 @@ module ChunkyPNG
       # TODO
     end
 
+    class AnimationControl < Base
+      attr_accessor :num_frames, :num_plays
+
+      def initialize(attrs = {})
+        super('acTL', attrs)
+        @num_frames ||= 1
+        @num_plays  ||= 0 # TODO: 定数化
+      end
+
+      def self.read(type, content)
+        fields = content.unpack('NN')
+        new(:num_frames => fields[0],
+            :num_plays  => fields[1])
+      end
+
+      def content
+        [num_frames, num_plays].pack('NN')
+      end
+    end
+
+    class FrameControl < Base
+      attr_accessor :sequence_number, :width, :height,
+                    :x_offset, :y_offset, :delay_num, :delay_den,
+                    :dispose_op, :blend_op
+
+      def initialize(attrs = {})
+        super('fcTL', attrs)
+        @sequence_number ||= 0
+        @width           ||= 1
+        @height          ||= 1
+        @x_offset        ||= 0
+        @y_offset        ||= 0
+        @delay_num       ||= 1
+        @delay_den       ||= 1
+        @dispose_op      ||= 0
+        @blend_op        ||= 0
+      end
+
+      def self.read(type, content)
+        fields = content.unpack('N5nnCC')
+        new(:sequence_number => fields[0],
+            :width           => fields[1],
+            :height          => fields[2],
+            :x_offset        => fields[3],
+            :y_offset        => fields[4],
+            :delay_num       => fields[5],
+            :delay_den       => fields[6],
+            :dispose_op      => fields[7],
+            :blend_op        => fields[8])
+      end
+
+      def content
+        [sequence_number, width, height,
+         x_offset, y_offset, delay_num, delay_den,
+         dispose_op, blend_op].pack('N5nnCC')
+      end
+    end
+
+    class FrameData < Base
+      attr_accessor :sequence_number, :frame_data
+
+      def initialize(attrs = {})
+        super('fdAT', attrs)
+        @sequence_number ||= 0
+      end
+
+      def self.read(type, content)
+        new(:sequence_number => content[0..3].unpack('N').first,
+            :frame_data      => content[4..-1])
+      end
+
+      def self.combine_chunks(frame_data_chunks)
+        zstream = Zlib::Inflate.new
+        frame_data_chunks.each { |c| zstream << c.frame_data }
+        inflated = zstream.finish
+        zstream.close
+        inflated
+      end
+
+      def content
+        [[sequence_number].pack('N'), frame_data].join
+      end
+    end
+
     # Maps chunk types to classes, based on the four byte chunk type indicator
     # at the beginning of a chunk.
     #
@@ -394,6 +478,9 @@ module ChunkyPNG
       'zTXt' => CompressedText,
       'iTXt' => InternationalText,
       'pHYs' => Physical,
+      'acTL' => AnimationControl,
+      'fcTL' => FrameControl,
+      'fdAT' => FrameData,
     }
   end
 end
